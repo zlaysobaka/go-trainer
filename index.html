@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Го"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="theme-color" content="#d9b062"><title>Го — учимся играть</title>
+<style>
+:root{--bg:#e8ece9;--fg:#18211e;--card:#f6f8f6;--bd:#c3cdc7;--ac:#2a4a7c;--mu:#586660;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#11171a;--fg:#e6ece8;--card:#1a2226;--bd:#33414a;--ac:#8fb2ea;--mu:#93a39b}}
+:root[data-theme=dark]{--bg:#11171a;--fg:#e6ece8;--card:#1a2226;--bd:#33414a;--ac:#8fb2ea;--mu:#93a39b}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100%}
+header{padding:18px 20px 0;max-width:1100px;margin:auto}
+h1{font:600 28px Georgia,"Iowan Old Style",serif;margin:0 0 12px;letter-spacing:.01em}
+nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--bd)}
+nav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--mu);font:inherit;padding:8px 12px;cursor:pointer}
+nav button.on{color:var(--fg);border-color:var(--ac);font-weight:600}
+main{max-width:1100px;margin:auto;padding:18px 20px 40px;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+#bw{flex:1 1 420px;max-width:640px}canvas{width:100%;display:block;border-radius:6px;box-shadow:0 2px 14px rgba(0,0,0,.25);touch-action:manipulation}
+#pn{flex:1 1 280px;display:flex;flex-direction:column;gap:12px;min-width:260px}
+.box{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:12px 14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0}
+label{font-size:14px;color:var(--mu)}
+select,button.b{font:inherit;padding:6px 10px;border:1px solid var(--bd);border-radius:5px;background:var(--bg);color:var(--fg);cursor:pointer}
+button.b:hover{border-color:var(--ac)}button.p{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+button:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+#st{font-weight:600}#msg{min-height:44px}.ok{color:#2f8a4f}.no{color:#b8452f}
+.ls button{display:block;width:100%;text-align:left;margin:3px 0}.ls .on{border-color:var(--ac);font-weight:600}
+#rules{flex:1 1 100%;max-width:760px}#rules details{border-bottom:1px solid var(--bd);padding:8px 0}#rules summary{cursor:pointer;font:600 18px Georgia,serif}#rules p{margin:6px 0}
+.hid{display:none!important}
+</style></head><body>
+<header><h1>Го — учимся играть</h1>
+<nav id="nav"></nav></header>
+<main>
+<div id="bw"><canvas id="cv"></canvas></div>
+<div id="pn">
+ <div class="box" id="set"></div>
+ <div class="box"><div id="st"></div><div id="cp" style="color:var(--mu);font-size:14px"></div><div id="msg"></div>
+  <div class="row"><button class="b" id="bp">Пас</button><button class="b" id="bu">Отменить ход</button><button class="b p" id="bn">Новая игра</button></div></div>
+ <div class="box ls hid" id="lsn"></div>
+</div>
+<div id="rules" class="hid"></div>
+</main>
+<script>
+const $=s=>document.querySelector(s),KOMI=6.5,N4=[[1,0],[-1,0],[0,1],[0,-1]];
+let S,hist=[],dead=new Set(),mode='bot',size=9,my=1,level=1,tool='alt',li=0,done=false,hov=-1,busy=false,atari=true;
+const nm=c=>c==1?'⚫ чёрных':'⚪ белых';
+function newGame(n){S={n,b:Array(n*n).fill(0),turn:1,cap:[0,0,0],passes:0,last:-1,over:false,prev:''};hist=[];dead=new Set();}
+const nb=(n,i)=>{const x=i%n,y=i/n|0,r=[];for(const[a,c]of N4){const u=x+a,v=y+c;if(u>=0&&v>=0&&u<n&&v<n)r.push(v*n+u)}return r};
+function grp(b,n,i){const col=b[i],st=[i],seen=new Set(st),libs=new Set();for(let k=0;k<st.length;k++)for(const j of nb(n,st[k])){if(!b[j])libs.add(j);else if(b[j]==col&&!seen.has(j)){seen.add(j);st.push(j)}}return{st,libs}}
+function play(s,i,c){if(s.b[i])return null;const b=s.b.slice();b[i]=c;let cap=0;
+ for(const j of nb(s.n,i))if(b[j]==3-c){const g=grp(b,s.n,j);if(!g.libs.size){g.st.forEach(k=>b[k]=0);cap+=g.st.length}}
+ const g=grp(b,s.n,i);if(!g.libs.size||b.join('')===s.prev)return null;return{b,cap,g}}
+function move(i){if(S.over)return false;const r=play(S,i,S.turn);if(!r)return false;hist.push(JSON.stringify(S));
+ S.prev=S.b.join('');S.b=r.b;S.cap[S.turn]+=r.cap;S.last=i;S.turn=3-S.turn;S.passes=0;return true}
+function pass(){hist.push(JSON.stringify(S));S.passes++;S.turn=3-S.turn;S.last=-1;S.prev='';if(S.passes>=2){S.over=true;msg('Игра окончена. Кликните по мёртвым камням, чтобы снять их с подсчёта.')}}
+function score(){const n=S.n,b=S.b.map((v,i)=>dead.has(i)?0:v),sc=[0,0,0],seen=new Set();b.forEach(v=>v&&sc[v]++);
+ for(let i=0;i<n*n;i++)if(!b[i]&&!seen.has(i)){const q=[i],adj=new Set();seen.add(i);for(let k=0;k<q.length;k++)for(const j of nb(n,q[k])){if(b[j])adj.add(b[j]);else if(!seen.has(j)){seen.add(j);q.push(j)}}if(adj.size==1)sc[[...adj][0]]+=q.length}
+ sc[2]+=KOMI;return sc}
+function bot(){const n=S.n,c=S.turn,o=3-c,noise=[14,5,1.5][level],m=(n-1)/2;let best=-1e9,bi=-1;
+ for(let i=0;i<n*n;i++){const r=play(S,i,c);if(!r)continue;const x=i%n,y=i/n|0,d=Math.min(x,y,n-1-x,n-1-y),ns=nb(n,i);let s=r.cap*12;
+  if(r.g.libs.size==1&&!r.cap)s-=15;if(ns.every(j=>S.b[j]==c))s-=20;
+  for(const j of ns){if(S.b[j]==o){const l=grp(r.b,n,j).libs.size;if(l==1)s+=6;else if(l==2)s+=1}
+   if(S.b[j]==c){const g0=grp(S.b,n,j);if(g0.libs.size==1&&r.g.libs.size>1)s+=10}}
+  s+=d==0?-4:d==1?0:d==2?3:1.5;s-=(Math.abs(x-m)+Math.abs(y-m))*.1;
+  for(let a=-2;a<=2;a++)for(let e=-2;e<=2;e++){const u=x+a,v=y+e;if(u>=0&&v>=0&&u<n&&v<n&&S.b[v*n+u]){s+=.3}}
+  s+=Math.random()*noise;if(s>best){best=s;bi=i}}
+ if(S.passes==1){const sc=score();if(sc[c]>sc[o])return -1}
+ return best<-4?-1:bi}
+function afterMove(){draw();if(mode=='bot'&&!S.over&&S.turn!=my&&!busy){busy=true;setTimeout(()=>{const i=bot();if(i<0){pass();msg('Бот пасует.')}else{move(i);msg('')}busy=false;draw()},400)}}
+function msg(t,c){$('#msg').className=c||'';$('#msg').textContent=t}
+function upd(){let t;if(S.over){const sc=score();t=`Чёрные ${sc[1]} · белые ${sc[2]} (коми ${KOMI}). Победа: ${sc[1]>sc[2]?'чёрные':'белые'} на ${Math.abs(sc[1]-sc[2])}`}
+ else t=`Ход ${nm(S.turn)}`+(mode=='bot'?(S.turn==my?' (вы)':' (бот)'):'');
+ if(mode=='learn')t=S.over?'':LS[li].g=='view'?'Разбор':'Ваш ход: '+nm(S.turn);
+ $('#st').textContent=t;$('#cp').textContent=mode=='learn'?'':`Взято камней: ⚫ ${S.cap[1]} · ⚪ ${S.cap[2]}`}
+const cv=$('#cv'),cx=cv.getContext('2d');let W=0,cell=0,mg=0;
+function draw(){const n=S.n,w=cv.parentElement.clientWidth,dpr=devicePixelRatio||1;if(w!=W||cv.width!=w*dpr){W=w;cv.width=w*dpr;cv.height=w*dpr;cv.style.height=w+'px'}
+ cx.setTransform(dpr,0,0,dpr,0,0);cell=W/(n+1);mg=cell;
+ cx.fillStyle='#d9b062';cx.fillRect(0,0,W,W);cx.strokeStyle='#4a3a1c';cx.lineWidth=1;cx.beginPath();
+ for(let k=0;k<n;k++){const p=mg+k*cell;cx.moveTo(mg,p);cx.lineTo(mg+(n-1)*cell,p);cx.moveTo(p,mg);cx.lineTo(p,mg+(n-1)*cell)}cx.stroke();
+ const hs=n==9?[2,4,6]:n==13?[3,6,9]:n==19?[3,9,15]:n==7?[3]:[];cx.fillStyle='#4a3a1c';
+ for(const a of hs)for(const b of hs){cx.beginPath();cx.arc(mg+a*cell,mg+b*cell,cell*.1,0,7);cx.fill()}
+ const pt=i=>[mg+(i%n)*cell,mg+(i/n|0)*cell],L=mode=='learn'?LS[li]:null;
+ if(L&&L.sl){const seen=new Set();S.b.forEach((v,i)=>{if(v&&!seen.has(i)){const g=grp(S.b,n,i);g.st.forEach(k=>seen.add(k));g.libs.forEach(k=>{const[x,y]=pt(k);cx.fillStyle='rgba(42,74,124,.75)';cx.beginPath();cx.arc(x,y,cell*.13,0,7);cx.fill()})}})}
+ S.b.forEach((v,i)=>{if(!v)return;const[x,y]=pt(i),r=cell*.47,g=cx.createRadialGradient(x-r*.35,y-r*.35,r*.1,x,y,r);
+  if(v==1){g.addColorStop(0,'#5b5b5b');g.addColorStop(1,'#050505')}else{g.addColorStop(0,'#fff');g.addColorStop(1,'#cfcfcf')}
+  cx.globalAlpha=dead.has(i)?.35:1;cx.fillStyle=g;cx.shadowColor='rgba(0,0,0,.4)';cx.shadowBlur=3;cx.beginPath();cx.arc(x,y,r,0,7);cx.fill();cx.shadowBlur=0;cx.globalAlpha=1;
+  if(i==S.last){cx.strokeStyle=v==1?'#fff':'#000';cx.lineWidth=2;cx.beginPath();cx.arc(x,y,r*.4,0,7);cx.stroke()}
+  if(atari&&!S.over&&grp(S.b,n,i).libs.size==1){cx.strokeStyle='#d6402a';cx.lineWidth=2.5;cx.beginPath();cx.arc(x,y,r+2,0,7);cx.stroke()}});
+ if(hov>=0&&!S.b[hov]&&!S.over&&!(mode=='bot'&&S.turn!=my)){const[x,y]=pt(hov);cx.globalAlpha=.45;cx.fillStyle=(tool=='w'?2:tool=='b'?1:S.turn)==1?'#000':'#fff';cx.beginPath();cx.arc(x,y,cell*.45,0,7);cx.fill();cx.globalAlpha=1}
+ upd()}
+function idx(e){const r=cv.getBoundingClientRect(),x=Math.round((e.clientX-r.left-mg)/cell),y=Math.round((e.clientY-r.top-mg)/cell);return x<0||y<0||x>=S.n||y>=S.n?-1:y*S.n+x}
+cv.onmousemove=e=>{const i=idx(e);if(i!=hov){hov=i;draw()}};cv.onmouseleave=()=>{hov=-1;draw()};
+cv.onclick=e=>{const i=idx(e);if(i<0||busy)return;
+ if(S.over){if(!S.b[i])return;const g=grp(S.b,S.n,i).st,rm=dead.has(i);g.forEach(k=>rm?dead.delete(k):dead.add(k));draw();return}
+ if(mode=='learn')return lesson(i);
+ if(mode=='bot'&&S.turn!=my)return;
+ if(mode=='free'&&tool!='alt'){hist.push(JSON.stringify(S));S.b[i]=tool=='x'?0:tool=='b'?1:2;S.prev='';draw();return}
+ if(!move(i)){msg(S.b[i]?'Здесь уже стоит камень.':'Ход запрещён: нет дыхания или это ко.','no');return}
+ msg('');afterMove()};
+function undo(){if(!hist.length||busy)return;S=JSON.parse(hist.pop());if(mode=='bot')while(S.turn!=my&&hist.length)S=JSON.parse(hist.pop());dead=new Set();msg('');draw()}
+$('#bu').onclick=()=>mode=='learn'?loadL():undo();
+$('#bp').onclick=()=>{if(S.over||busy||(mode=='bot'&&S.turn!=my))return;pass();msg(S.over?'Игра окончена. Кликните по мёртвым камням, чтобы снять их с подсчёта.':'Пас.');afterMove()};
+$('#bn').onclick=()=>reset();
+function reset(){if(mode=='learn')return loadL();newGame(size);msg('');draw();if(mode=='bot'&&my==2)afterMove()}
+const tabs={bot:'Игра с ботом',two:'Два игрока',free:'Свободная практика',learn:'Обучение',rules:'Правила и советы'};
+$('#nav').innerHTML=Object.entries(tabs).map(([k,v])=>`<button data-m="${k}">${v}</button>`).join('');
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
+function opt(arr,v){return arr.map(([a,t])=>`<option value="${a}"${a==v?' selected':''}>${t}</option>`).join('')}
+function setMode(m){mode=m;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.m==m));
+ const r=m=='rules';$('#bw').classList.toggle('hid',r);$('#pn').classList.toggle('hid',r);$('#rules').classList.toggle('hid',!r);$('#lsn').classList.toggle('hid',m!='learn');
+ $('#bu').textContent=m=='learn'?'Заново':'Отменить ход';$('#bn').classList.toggle('hid',m=='learn');$('#bp').classList.toggle('hid',m=='learn');
+ if(r)return;let h='';
+ if(m!='learn')h+=`<div class="row"><label>Доска <select id="sz">${opt([[9,'9×9 (для начала)'],[13,'13×13'],[19,'19×19']],size)}</select></label>`;
+ if(m=='bot')h+=`<label>Вы играете <select id="my">${opt([[1,'чёрными (ходите первым)'],[2,'белыми']],my)}</select></label><label>Бот <select id="lv">${opt([[0,'Новичок'],[1,'Любитель'],[2,'Сильнее']],level)}</select></label>`;
+ if(m=='free')h+=`<label>Инструмент <select id="tl">${opt([['alt','Ходить по очереди'],['b','Ставить чёрные'],['w','Ставить белые'],['x','Убирать камни']],tool)}</select></label>`;
+ if(m!='learn')h+=`<label><input type="checkbox" id="at" ${atari?'checked':''}> Подсвечивать атари (красное кольцо)</label></div>`;
+ if(m=='two')h+=`<div style="color:var(--mu);font-size:14px">Играйте вдвоём за одним Mac: ходите по очереди, чёрные начинают.</div>`;
+ if(m=='free')h+=`<div style="color:var(--mu);font-size:14px">Тренируйтесь за обе стороны, отменяйте ходы, расставляйте позиции вручную.</div>`;
+ if(m=='learn')h='<div style="color:var(--mu);font-size:14px">Проходите уроки по порядку. Красное кольцо — камень в атари.</div>';
+ $('#set').innerHTML=h;
+ const g=id=>$(id);if(g('#sz'))g('#sz').onchange=e=>{size=+e.target.value;reset()};if(g('#my'))g('#my').onchange=e=>{my=+e.target.value;reset()};
+ if(g('#lv'))g('#lv').onchange=e=>level=+e.target.value;if(g('#tl'))g('#tl').onchange=e=>tool=e.target.value;if(g('#at'))g('#at').onchange=e=>{atari=e.target.checked;draw()};
+ if(m=='learn'){atari=true;$('#lsn').innerHTML=LS.map((l,i)=>`<button class="b" data-i="${i}">${i+1}. ${l.t}</button>`).join('');
+  document.querySelectorAll('#lsn button').forEach(b=>b.onclick=()=>{li=+b.dataset.i;loadL()});loadL()}else reset()}
+const LS=[
+{t:'Дыхание',n:7,g:'view',sl:1,B:[[3,3],[0,3],[0,0]],W:[],c:1,x:'Дыхание — свободные пункты рядом с камнем по линиям (не по диагонали). Они отмечены синими точками. В центре у камня 4 дыхания, на краю 3, в углу только 2. Камни одного цвета, стоящие рядом, образуют группу и делят дыхание.'},
+{t:'Захват камня',n:7,g:'cap',B:[[2,3],[4,3],[3,2]],W:[[3,3]],c:1,ok:[[3,4]],x:'У белого камня осталось одно дыхание — это атари. Заберите камень: закройте последнее дыхание.'},
+{t:'Захват в углу',n:7,g:'cap',B:[[1,0]],W:[[0,0]],c:1,ok:[[0,1]],x:'В углу дыханий меньше, поэтому камень берётся быстрее. Захватите белый камень.'},
+{t:'Захват группы',n:7,g:'cap',B:[[2,3],[4,3],[3,2],[2,4],[4,4]],W:[[3,3],[3,4]],c:1,ok:[[3,5]],x:'Группа делит дыхание на всех. Найдите её последнее дыхание и захватите оба камня.'},
+{t:'Спасение камня',n:7,g:'live',B:[[3,3]],W:[[2,3],[4,3],[3,2]],c:1,ok:[[3,4]],x:'Ваш чёрный камень в атари. Продлитесь в сторону, где есть свободное место, чтобы у группы стало больше дыханий.'},
+{t:'Запрет самоубийства',n:7,g:'ill',B:[],W:[[2,3],[4,3],[3,2],[3,4]],c:1,ok:[[3,3]],x:'Нельзя ставить камень в пункт без дыхания, если это ничего не захватывает. Попробуйте сыграть в центр белого «кольца» — игра не позволит.'},
+{t:'Два глаза',n:7,g:'ill',B:[[1,0],[0,1],[1,1],[2,1],[3,1],[3,0]],W:[[4,0],[4,1],[3,2],[2,2],[1,2],[0,2]],c:2,ok:[[0,0],[2,0]],x:'У чёрной группы два «глаза» — отдельных пустых пункта внутри. Белые не могут поставить камень ни в один из них, значит группа жива навсегда. Попробуйте сходить белыми в глаз.'},
+{t:'Ко',n:7,g:'cap',B:[[3,2],[2,3],[3,4]],W:[[4,2],[5,3],[4,4],[3,3]],c:1,ok:[[4,3]],x:'Возьмите белый камень в центре. Затем белые не смогут сразу взять обратно: повторять прежнюю позицию нельзя. Это правило ко — сначала сделайте ход в другом месте.'},
+{t:'Подсчёт очков',n:7,g:'view',B:[0,1,2,3,4,5,6].map(y=>[2,y]),W:[0,1,2,3,4,5,6].map(y=>[4,y]),c:1,x:'Очки считаются по площади: ваши камни плюс пустые пункты, окружённые только вами. Здесь у каждого по 7 камней и 14 пунктов, средняя линия — ничья (дамэ). Белые получают коми 6.5 за то, что ходят вторыми.'}];
+function loadL(){const L=LS[li];newGame(L.n);L.B.forEach(([x,y])=>S.b[y*L.n+x]=1);L.W.forEach(([x,y])=>S.b[y*L.n+x]=2);S.turn=L.c;done=false;
+ document.querySelectorAll('#lsn button').forEach((b,i)=>b.classList.toggle('on',i==li));msg(L.x);draw()}
+function lesson(i){const L=LS[li];if(L.g=='view'||done)return;const n=L.n,ok=L.ok.map(([x,y])=>y*n+x),r=play(S,i,S.turn),win=()=>{done=true;msg('✓ Верно! '+(li<LS.length-1?'Откройте следующий урок.':'Это был последний урок — пора играть с ботом.'),'ok')};
+ if(L.g=='ill'){if(!r&&ok.includes(i)){win();return}msg('Здесь ход разрешён. Нужен пункт, где у камня не будет дыхания.','no');return}
+ if(!r){msg('Ход запрещён.','no');return}
+ const good=ok.includes(i);move(i);draw();if(good)win();else msg('Не то. Нажмите «Заново» и подумайте, где последнее дыхание.','no')}
+const R=[['Цель игры','Отгородить на доске больше территории, чем соперник. Игроки по очереди ставят камни на пересечения линий, чёрные ходят первыми. Поставленный камень не двигается.'],
+['Дыхание и захват','Дыхание — свободный пункт рядом с камнем по линии. Соединённые камни образуют группу с общим дыханием. Группа без дыхания снимается с доски. Когда осталось одно дыхание, это атари.'],
+['Запрещённые ходы','Нельзя ходить в пункт без дыхания, если ход ничего не захватывает (самоубийство). Нельзя сразу повторять позицию, которая была перед предыдущим ходом (ко).'],
+['Глаза и жизнь','Группа с двумя отдельными глазами не может быть захвачена, потому что соперник не вправе ходить внутрь глаза. Учитесь строить два глаза — это основа жизни.'],
+['Конец игры и счёт','Игра заканчивается, когда оба игрока подряд пасуют. Мёртвые камни снимаются. Очки: свои камни плюс окружённые пункты. Белым добавляют коми 6.5.'],
+['Советы новичку','Начните с доски 9×9. Сначала занимайте углы, потом стороны, потом центр. Не разбрасывайте камни без связи. Следите за атари — своим и чужим. Не жертвуйте территорией ради одного камня. Сыграйте 10 партий с ботом «Новичок», затем повышайте уровень.'],
+['Словарь','Атари — у камней одно дыхание. Дамэ — нейтральный пункт. Ко — ситуация с бесконечным повторением. Сэки — взаимная жизнь, ни один не может взять. Сэнтэ — ход, на который надо отвечать.']];
+$('#rules').innerHTML=R.map(([t,x],i)=>`<details${i<2?' open':''}><summary>${t}</summary><p>${x}</p></details>`).join('');
+addEventListener('resize',()=>S&&draw());setMode('bot');
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
